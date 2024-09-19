@@ -5,6 +5,7 @@ from stable_baselines3 import DQN, A2C, PPO
 
 from bsuite_utils.custom_models import BSuiteDQNShim, FrameSkipWrapper, FrameStackWrapper, NormalizeWrapper
 from bsuite_utils.mnist_wrapper import MNISTWrapper, CustomCNNPolicy
+from bsuite_utils.nace_based_model import NaceAlgorithm
 
 
 class ModelConfig(NamedTuple):
@@ -23,6 +24,7 @@ _ppo_default_kwargs = dict(learning_rate=0.0007, ent_coef=0.01, n_steps=128)
 dqn_default = [ModelConfig(name="DQN_default", cls=DQN, kwargs=_dqn_default_kwargs), ]
 a2c_default = [ModelConfig(name="A2C_default", cls=A2C)]
 ppo_default = [ModelConfig(name="PPO_default", cls=PPO, kwargs=_ppo_default_kwargs), ]
+nace_default = [ModelConfig(name="NACE_default", cls=NaceAlgorithm) ]
 # 1.2
 dqn_alternate_implementations = [
     ModelConfig(name="DQN_BSuite", cls=BSuiteDQNShim)

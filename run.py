@@ -77,6 +77,16 @@ def main():
     termcolor.cprint(f"Finished {len(SWEEP)} minisweep experiments in {tock - tick:.2f} seconds", _FOOTER_COLOR,
                      attrs=['bold'])
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 
 def parse_stdin():
     parser = argparse.ArgumentParser()
@@ -91,8 +101,10 @@ def parse_stdin():
     )
     parser.add_argument('-j', '--jobs', help="Num processes to run in parallel. -1 is maximum)", type=int,
                         default=-1)
-    parser.add_argument('-f', '--overwrite', help="Overwrite previous bsuite .csv files", action='store_false',
-                        default=False)
+    parser.add_argument('-f', "--overwrite", type=str2bool, nargs='?',
+                        const=True, default=False,
+                        help="Overwrite previous bsuite .csv files")
+
     parser.add_argument("-o", "--results_dir", help="Root path into which results from experiment runs will be written",
                         default=DEFAULT_RESULTS_DIR)
     args = parser.parse_args()

@@ -9,9 +9,12 @@ class ExperimentConfig(NamedTuple):
 
 
 EXPERIMENTS = [
-    ExperimentConfig("1.1", dqn_default + a2c_default + ppo_default),
+    ExperimentConfig("1.1", dqn_default + a2c_default + ppo_default + nace_default),
     ExperimentConfig("1.2", dqn_default + dqn_alternate_implementations),
     ExperimentConfig("1.3", dqn_default + dqn_alternate_buffsizes),
+
+    ExperimentConfig("1.4", nace_default),
+    ExperimentConfig("1.5", a2c_default),
 
     ExperimentConfig("2.1", ppo_framestack + ppo_rnn),
     ExperimentConfig("2.2", dqn_default + dqn_normalize),

@@ -1,10 +1,15 @@
+# we found versions needed to be specified for many packages due to later incompatablities being introdueced.
 stable-baselines3
 bsuite
 tensorboard
 sb3-contrib
-numpy
-pandas
+numpy==1.22.4
+pandas==1.5.2
 termcolor~=2.1.0
-matplotlib
+matplotlib==3.2.2
 dm-sonnet
 gym
+plotnine==0.7
+mizani==0.7.1
+tensorflow==2.13.1
+shimmy==0.2.1
