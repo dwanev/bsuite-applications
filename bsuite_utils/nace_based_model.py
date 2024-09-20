@@ -477,9 +477,9 @@ class NaceAlgorithm(ABC):
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
                 actions, values, log_probs = self.policy(obs_tensor) # TODO this is where NACE should be called.
-                # actions tensor shape (1,) int64
-                # values tensor shape (1,1) float32
-                # logprob tensor shape (1,)  float32
+                # actions: tensor shape (1,) int64
+                # values: tensor shape (1,1) float32
+                # logprob: tensor shape (1,)  float32
                 # Of course we need to add the observations times in.
 
 

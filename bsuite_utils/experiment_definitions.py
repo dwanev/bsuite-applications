@@ -15,6 +15,7 @@ EXPERIMENTS = [
 
     ExperimentConfig("1.4", nace_default),
     ExperimentConfig("1.5", a2c_default),
+    ExperimentConfig("1.6", nace_default + a2c_default),
 
     ExperimentConfig("2.1", ppo_framestack + ppo_rnn),
     ExperimentConfig("2.2", dqn_default + dqn_normalize),
