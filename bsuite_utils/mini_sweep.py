@@ -74,6 +74,13 @@ sweep_config = dict(
     },
 )
 
+just_deepsea_config = dict(    deep_sea={
+        'ids': [0, 5, 10, 15, 20],
+        'time_steps': [100_000, 200_000, 300_000, 400_000, 500_000],
+        'fixed': False
+    },
+)
+
 
 @dataclasses.dataclass
 class ExperimentSettings:
@@ -84,7 +91,8 @@ class ExperimentSettings:
 SWEEP_SETTINGS: Dict[str, ExperimentSettings] = dict()
 SWEEP: List[str] = []  # list of bsuite_ids
 
-for key in sweep_config:
+
+for key in just_deepsea_config: # sweep_config
     experiment = sweep_config[key]
     for idx, id_number in enumerate(experiment['ids']):
         SWEEP.append(f"{key}/{id_number}")

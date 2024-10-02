@@ -1,3 +1,4 @@
+import copy
 import sys
 import time
 import random
@@ -6,17 +7,18 @@ from abc import ABC, abstractmethod
 from collections import deque
 from torch.nn import functional as F
 
-
 import numpy as np
 import torch as th
 from gymnasium import spaces
 import gymnasium as gymnasium
+import nace
 
 from stable_baselines3.common.utils import explained_variance
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback
 from stable_baselines3.common.logger import Logger
-from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, MultiInputActorCriticPolicy
+from stable_baselines3.common.policies import ActorCriticCnnPolicy, ActorCriticPolicy, BasePolicy, \
+    MultiInputActorCriticPolicy
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.buffers import DictRolloutBuffer, RolloutBuffer
 from stable_baselines3.common.callbacks import BaseCallback
@@ -47,7 +49,9 @@ from stable_baselines3.common.utils import (
     update_learning_rate,
 )
 
-from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space, is_image_space_channels_first
+from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space, \
+    is_image_space_channels_first
+
 SelfOnPolicyAlgorithm = TypeVar("SelfNaceAlgorithm", bound="NaceAlgorithm")
 
 
@@ -68,6 +72,7 @@ def maybe_make_env(env: Union[GymEnv, str], verbose: int) -> GymEnv:
         except TypeError:
             env = gymnasium.make(env_id)
     return env
+
 
 class NaceAlgorithm(ABC):
     rollout_buffer: RolloutBuffer
@@ -95,26 +100,27 @@ class NaceAlgorithm(ABC):
             verbose: int = 0,
             seed: Optional[int] = None,
             device: Union[th.device, str] = "mps",
-            monitor_wrapper: bool = True, # When creating an environment, whether to wrap it or not in a Monitor wrapper
+            monitor_wrapper: bool = True,
+            # When creating an environment, whether to wrap it or not in a Monitor wrapper
             _init_setup_model: bool = True,
             supported_action_spaces: Optional[Tuple[Type[spaces.Space], ...]] = None,
     ):
-        self.policy=policy
-        self.env=env
-        self.verbose=verbose
-        self.device=device
-        self.support_multi_env=True
-        self.seed=seed
-        self.supported_action_spaces=supported_action_spaces
+        self.policy = policy
+        self.env = env
+        self.verbose = verbose
+        self.device = device
+        self.support_multi_env = True
+        self.seed = seed
+        self.supported_action_spaces = supported_action_spaces
         self.rollout_buffer_class = None
-        self.use_sde = False # not used/implemented use generalized State Dependent Exploration (gSDE) over action noise exploration
-        self.n_steps = 5 # n_steps: The number of steps to run for each environment per update
-        #(i.e. batch size is n_steps * n_env where n_env is number of environment copies running in parallel)
-        self.gamma = 0.0 # not used/implemented
-        self.sde_sample_freq = 0 # not used/implemented
-        self.gae_lambda = 0.0 # not used/implemented
-        self.rollout_buffer_kwargs = {} # not used/implemented
-        self.policy_aliases : ClassVar[Dict[str, Type[BasePolicy]]] = {
+        self.use_sde = False  # not used/implemented use generalized State Dependent Exploration (gSDE) over action noise exploration
+        self.n_steps = 5  # n_steps: The number of steps to run for each environment per update
+        # (i.e. batch size is n_steps * n_env where n_env is number of environment copies running in parallel)
+        self.gamma = 0.0  # not used/implemented
+        self.sde_sample_freq = 0  # not used/implemented
+        self.gae_lambda = 0.0  # not used/implemented
+        self.rollout_buffer_kwargs = {}  # not used/implemented
+        self.policy_aliases: ClassVar[Dict[str, Type[BasePolicy]]] = {
             "MlpPolicy": ActorCriticPolicy,
             "CnnPolicy": ActorCriticCnnPolicy,
             "MultiInputPolicy": MultiInputActorCriticPolicy,
@@ -131,7 +137,7 @@ class NaceAlgorithm(ABC):
         self.num_timesteps = 0
         self._last_obs = None  # type: Optional[Union[np.ndarray, Dict[str, np.ndarray]]]
         self._custom_logger = False
-        self.tensorboard_log: Optional[str] = None # location of tensor board logging
+        self.tensorboard_log: Optional[str] = None  # location of tensor board logging
         self._n_updates: int = 0
 
         if isinstance(policy, str):
@@ -165,10 +171,12 @@ class NaceAlgorithm(ABC):
 
             # Catch common mistake: using MlpPolicy/CnnPolicy instead of MultiInputPolicy
             if policy in ["MlpPolicy", "CnnPolicy"] and isinstance(self.observation_space, spaces.Dict):
-                raise ValueError(f"You must use `MultiInputPolicy` when working with dict observation space, not {policy}")
+                raise ValueError(
+                    f"You must use `MultiInputPolicy` when working with dict observation space, not {policy}")
 
             if self.use_sde and not isinstance(self.action_space, spaces.Box):
-                raise ValueError("generalized State-Dependent Exploration (gSDE) can only be used with continuous actions.")
+                raise ValueError(
+                    "generalized State-Dependent Exploration (gSDE) can only be used with continuous actions.")
 
             if isinstance(self.action_space, spaces.Box):
                 assert np.all(
@@ -179,6 +187,9 @@ class NaceAlgorithm(ABC):
 
         if _init_setup_model:
             self._setup_model()
+
+
+
 
 
     def _update_info_buffer(self, infos: List[Dict[str, Any]], dones: Optional[np.ndarray] = None) -> None:
@@ -204,7 +215,6 @@ class NaceAlgorithm(ABC):
             if maybe_is_success is not None and dones[idx]:
                 self.ep_success_buffer.append(maybe_is_success)
 
-
     def _update_current_progress_remaining(self, num_timesteps: int, total_timesteps: int) -> None:
         """
 
@@ -219,14 +229,14 @@ class NaceAlgorithm(ABC):
 
     @property
     def logger(self) -> Logger:
-         # copied from BaseAlgorthm
+        # copied from BaseAlgorthm
         """Getter for the logger object."""
         return self._logger
 
     def _init_callback(
-        self,
-        callback: MaybeCallback,
-        progress_bar: bool = False,
+            self,
+            callback: MaybeCallback,
+            progress_bar: bool = False,
     ) -> BaseCallback:
         """
 
@@ -250,14 +260,13 @@ class NaceAlgorithm(ABC):
         callback.init_callback(self)
         return callback
 
-
     def _setup_learn(
-        self,
-        total_timesteps: int,
-        callback: MaybeCallback = None,
-        reset_num_timesteps: bool = True,
-        tb_log_name: str = "run",
-        progress_bar: bool = False,
+            self,
+            total_timesteps: int,
+            callback: MaybeCallback = None,
+            reset_num_timesteps: bool = True,
+            tb_log_name: str = "run",
+            progress_bar: bool = False,
     ) -> Tuple[int, BaseCallback]:
         """
         Copied from BaseAlgorithm
@@ -308,7 +317,6 @@ class NaceAlgorithm(ABC):
 
         return total_timesteps, callback
 
-
     def _get_policy_from_name(self, policy_name: str) -> Type[BasePolicy]:
         """
         Get a policy class from its name representation.
@@ -320,8 +328,6 @@ class NaceAlgorithm(ABC):
         :param policy_name: Alias of the policy
         :return: A policy class (type)
         """
-
-
 
         if policy_name in self.policy_aliases:
             return self.policy_aliases[policy_name]
@@ -362,7 +368,7 @@ class NaceAlgorithm(ABC):
                 # the other channel last), VecTransposeImage will throw an error
                 for space in env.observation_space.spaces.values():
                     wrap_with_vectranspose = wrap_with_vectranspose or (
-                        is_image_space(space) and not is_image_space_channels_first(space)  # type: ignore[arg-type]
+                            is_image_space(space) and not is_image_space_channels_first(space)  # type: ignore[arg-type]
                     )
             else:
                 wrap_with_vectranspose = is_image_space(env.observation_space) and not is_image_space_channels_first(
@@ -399,7 +405,7 @@ class NaceAlgorithm(ABC):
         # seed the RNG for all devices (both CPU and CUDA)
         th.manual_seed(seed)
 
-        if self.device.type == th.device("cuda").type: # using_cuda
+        if self.device.type == th.device("cuda").type:  # using_cuda
             # Deterministic operations for CuDNN, it may impact performances
             th.backends.cudnn.deterministic = True
             th.backends.cudnn.benchmark = False
@@ -409,30 +415,62 @@ class NaceAlgorithm(ABC):
         if self.env is not None:
             self.env.seed(seed)
 
-
     def _setup_model(self) -> None:
         self.set_random_seed(self.seed)
 
-        if self.rollout_buffer_class is None:
-            if isinstance(self.observation_space, spaces.Dict):
-                self.rollout_buffer_class = DictRolloutBuffer
-            else:
-                self.rollout_buffer_class = RolloutBuffer
+        # if self.rollout_buffer_class is None:
+        #     if isinstance(self.observation_space, spaces.Dict):
+        #         self.rollout_buffer_class = DictRolloutBuffer
+        #     else:
+        #         self.rollout_buffer_class = RolloutBuffer
+        #
+        # self.rollout_buffer = self.rollout_buffer_class(
+        #     self.n_steps,
+        #     self.observation_space,  # type: ignore[arg-type]
+        #     self.action_space,
+        #     device=self.device,
+        #     gamma=self.gamma,
+        #     gae_lambda=self.gae_lambda,
+        #     n_envs=self.n_envs,
+        #     **self.rollout_buffer_kwargs,
+        # )
+        # self.policy = self.policy_class(  # type: ignore[assignment]
+        #     self.observation_space, self.action_space, self.lr_schedule, use_sde=self.use_sde, **self.policy_kwargs
+        # )
+        # self.policy = self.policy.to(self.device)
 
-        self.rollout_buffer = self.rollout_buffer_class(
-            self.n_steps,
-            self.observation_space,  # type: ignore[arg-type]
-            self.action_space,
-            device=self.device,
-            gamma=self.gamma,
-            gae_lambda=self.gae_lambda,
-            n_envs=self.n_envs,
-            **self.rollout_buffer_kwargs,
+        self.stepper = nace.stepper_v4.StepperV4(agent_indication_value=1)
+        self.full_view_npworld = None
+        self.time_counter = 0
+
+        nace.world_module.set_traversable_board_value(chr(0)) # set '0' to be traversable (should be learnt? or not needed)
+
+        if isinstance(self.action_space, spaces.Discrete):
+            numeric_action_list = [ i+self.action_space.start for i in range(self.action_space.n)]
+            fnc_action_list = [nace.world_module.left, nace.world_module.right]
+            nace.world_module.set_full_action_list(fnc_action_list)
+            self.action_lookup = {}
+            for (fnc, numeric) in zip( fnc_action_list, numeric_action_list):
+                self.action_lookup[fnc] = numeric
+        else:
+            # set the mapping of the movements, the rest are expected to be learnt. (these could be learnt from watching gym
+            # action and this and last worlds.)
+            print("ERROR: This line should not be logged or used, this path should never trigger. TODO delete") # TODO delete
+            nace.world_module.set_full_action_list(
+                [nace.world_module.up, nace.world_module.right, nace.world_module.down, nace.world_module.left])
+
+        print("TODO determine if the next line is needed, or needed to be refactored in some way") # TODO
+        nace.hypothesis.Hypothesis_UseMovementOpAssumptions(
+            nace.world_module.left,
+            nace.world_module.right,
+            nace.world_module.up,
+            nace.world_module.down,
+            nace.world_module.drop,
+            "DisableOpSymmetryAssumption" in sys.argv,
         )
-        self.policy = self.policy_class(  # type: ignore[assignment]
-            self.observation_space, self.action_space, self.lr_schedule, use_sde=self.use_sde, **self.policy_kwargs
-        )
-        self.policy = self.policy.to(self.device)
+
+
+
 
     def collect_rollouts(
             self,
@@ -442,11 +480,8 @@ class NaceAlgorithm(ABC):
             n_rollout_steps: int,
     ) -> bool:
         """
-        # copied from on_policy_algorithm.py
+        # Based on the code in on_policy_algorithm.py collect_rollouts()
 
-        Collect experiences using the current policy and fill a ``RolloutBuffer``.
-        The term rollout here refers to the model-free notion and should not
-        be used with the concept of rollout used in model-based RL or planning.
 
         :param env: The training environment
         :param callback: Callback that will be called at each step
@@ -476,12 +511,11 @@ class NaceAlgorithm(ABC):
             with th.no_grad():
                 # Convert to pytorch tensor or to TensorDict
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
-                actions, values, log_probs = self.policy(obs_tensor) # TODO this is where NACE should be called.
-                # actions: tensor shape (1,) int64
-                # values: tensor shape (1,1) float32
-                # logprob: tensor shape (1,)  float32
+                actions, values, log_probs = self.policy(obs_tensor)
+                # actions tensor shape (1,) int64
+                # values tensor shape (1,1) float32
+                # logprob tensor shape (1,)  float32
                 # Of course we need to add the observations times in.
-
 
             actions = actions.cpu().numpy()
 
@@ -558,7 +592,7 @@ class NaceAlgorithm(ABC):
 
         """
         # copied from A2C
-        
+
         Update policy using the currently gathered
         rollout buffer (one gradient step over whole data).
         """
@@ -618,8 +652,6 @@ class NaceAlgorithm(ABC):
         if hasattr(self.policy, "log_std"):
             self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
 
-
-
     def _dump_logs(self, iteration: int) -> None:
         """
         Write log.
@@ -642,7 +674,7 @@ class NaceAlgorithm(ABC):
             self.logger.record("rollout/success_rate", safe_mean(self.ep_success_buffer))
         self.logger.dump(step=self.num_timesteps)
 
-    def learn(
+    def _learn_original(
             self: SelfOnPolicyAlgorithm,
             total_timesteps: int,
             callback: MaybeCallback = None,
@@ -682,11 +714,225 @@ class NaceAlgorithm(ABC):
                 assert self.ep_info_buffer is not None
                 self._dump_logs(iteration)
 
-            self.train()
+            self.train()  #
 
         callback.on_training_end()
 
         return self
+
+    def _new_train_and_rollout(
+            self,
+            env: VecEnv,
+            callback: BaseCallback,
+            n_rollout_steps: int,
+    ) -> bool:
+        """
+        # Based on the code in on_policy_algorithm.py collect_rollouts()
+
+
+        :param env: The training environment
+        :param callback: Callback that will be called at each step
+            (and at the beginning and end of the rollout)
+        :param rollout_buffer: Buffer to fill with rollouts (may be consumed imediately! :)
+        :param n_rollout_steps: Number of experiences to collect per environment
+        :return: True if function returned with at least `n_rollout_steps`
+            collected, False if callback terminated rollout prematurely.
+        """
+        assert self._last_obs is not None, "No previous observation was provided"
+        # Switch to eval mode (this affects batch norm / dropout)
+        # self.policy.set_training_mode(False)
+
+        n_steps = 0
+        # Sample new weights for the state dependent exploration
+        # if self.use_sde:
+        #     self.policy.reset_noise(env.num_envs)
+
+        callback.on_rollout_start()
+
+        accumulated_rewards = None
+
+        while n_steps < n_rollout_steps:
+            # if self.use_sde and self.sde_sample_freq > 0 and n_steps % self.sde_sample_freq == 0:
+            #     # Sample a new noise matrix
+            #     self.policy.reset_noise(env.num_envs)
+
+            # with th.no_grad():
+            #     # Convert to pytorch tensor or to TensorDict
+            #     # obs_tensor = obs_as_tensor(self._last_obs, self.device)
+            #     # actions_old, values, log_probs = self.policy(obs_tensor)  # TODO replace this call
+            #     # actions tensor shape (1,) int64
+            #     # values tensor shape (1,1) float32
+            #     # logprob tensor shape (1,)  float32
+
+            if self.full_view_npworld is None:
+                print("NACE: creating new world.")
+                self.full_view_npworld = nace.world_module_numpy.NPWorld(
+                    with_observed_time=False,
+                    name="external_npworld",
+                    view_dist_x=100,
+                    view_dist_y=100)
+
+            # copy the env into a known foram world (this step could be optimised out)
+            agent_xy_loc_list, modified_count, pre_update_world = self.full_view_npworld.update_world_from_ground_truth_NPArray(
+                observed_word=self._last_obs[0]
+            )
+
+            action, current_behavior = self.stepper.get_next_action(
+                ground_truth_external_world=self.full_view_npworld,
+                new_xy_loc=agent_xy_loc_list[-1],
+                print_debug_info=True
+            )
+            # _x = env.render("human")
+
+            actions = np.zeros( (1,) )
+            actions[0] = self.action_lookup[action]
+
+                # Of course we need to add the observations times in.
+
+            # Rescale and perform action
+            clipped_actions = actions
+
+            # if isinstance(self.action_space, spaces.Box):
+            #     if self.policy.squash_output:
+            #         # Unscale the actions to match env bounds
+            #         # if they were previously squashed (scaled in [-1, 1])
+            #         clipped_actions = self.policy.unscale_action(clipped_actions)
+            #     else:
+            #         # Otherwise, clip the actions to avoid out of bound error
+            #         # as we are sampling from an unbounded Gaussian distribution
+            #         clipped_actions = np.clip(actions, self.action_space.low, self.action_space.high)
+            # done[0] == True on timestep 19 on 20x20 board
+            new_obs, rewards, dones, infos = env.step(clipped_actions)
+
+            if accumulated_rewards is None:
+                accumulated_rewards = copy.deepcopy(rewards)
+            else:
+                accumulated_rewards += rewards
+
+            # copy state from env format into NPformat
+            agent_xy_loc_list, modified_count, pre_update_world = self.full_view_npworld.update_world_from_ground_truth_NPArray(
+                observed_word=new_obs[0]
+            )
+            # let stepper update it's internal world state
+            self.stepper.set_world_ground_truth_state(self.full_view_npworld, agent_xy_loc_list, self.time_counter)
+            self.time_counter += 1
+
+            # let stepper get the latest agent state
+            status = self.stepper.set_agent_ground_truth_state(
+                xy_loc=agent_xy_loc_list[-1],
+                score=accumulated_rewards[0],
+                values_exc_score=[] # no state held by this agent (i.e. keys, money)
+            )
+            # perform learning
+            self.stepper.predict_and_observe(print_out_world_and_plan=True)
+
+
+            self.num_timesteps += env.num_envs
+
+            # Give access to local variables
+            callback.update_locals(locals())
+            if not callback.on_step():
+                return False
+
+            self._update_info_buffer(infos, dones)
+            n_steps += 1
+
+            if isinstance(self.action_space, spaces.Discrete):
+                # Reshape in case of discrete action
+                actions = actions.reshape(-1, 1)
+
+            # Handle timeout by bootstraping with value function
+            # see GitHub issue #633
+            for idx, done in enumerate(dones):
+                if (
+                        done
+                        and infos[idx].get("terminal_observation") is not None
+                        and infos[idx].get("TimeLimit.truncated", False)
+                ):
+                    terminal_obs = self.policy.obs_to_tensor(infos[idx]["terminal_observation"])[0]
+                    with th.no_grad():
+                        terminal_value = self.policy.predict_values(terminal_obs)[0]  # type: ignore[arg-type]
+                    rewards[idx] += self.gamma * terminal_value
+
+            self._last_obs = new_obs  # type: ignore[assignment]
+            self._last_episode_starts = dones
+
+        # with th.no_grad():
+        #     # Compute value for the last timestep
+        #     values = self.policy.predict_values(obs_as_tensor(new_obs, self.device))  # type: ignore[arg-type]
+
+        # rollout_buffer.compute_returns_and_advantage(last_values=values, dones=dones)
+
+        callback.update_locals(locals())
+
+        callback.on_rollout_end()
+
+        return True
+
+    def _learn_new(
+            self: SelfOnPolicyAlgorithm,
+            total_timesteps: int,
+            callback: MaybeCallback = None,
+            log_interval: int = 1,
+            tb_log_name: str = "OnPolicyAlgorithm",
+            reset_num_timesteps: bool = True,
+            progress_bar: bool = False,
+    ) -> SelfOnPolicyAlgorithm:
+        # copied from on_policy_algorithm.py
+
+        iteration = 0
+
+        total_timesteps, callback = self._setup_learn(
+            total_timesteps,
+            callback,
+            reset_num_timesteps,
+            tb_log_name,
+            progress_bar,
+        )
+
+        callback.on_training_start(locals(), globals())
+
+        assert self.env is not None
+
+        while self.num_timesteps < total_timesteps:
+
+            # TODO change this block.
+            continue_training = self._new_train_and_rollout(
+                self.env,
+                callback,
+                n_rollout_steps=self.n_steps)
+
+            if not continue_training:
+                break
+
+            iteration += 1
+            self._update_current_progress_remaining(self.num_timesteps, total_timesteps)
+
+            # Display training infos
+            if log_interval is not None and iteration % log_interval == 0:
+                assert self.ep_info_buffer is not None
+                self._dump_logs(iteration)
+
+        callback.on_training_end()
+
+        return self
+
+    def learn(
+            self: SelfOnPolicyAlgorithm,
+            total_timesteps: int,
+            callback: MaybeCallback = None,
+            log_interval: int = 1,
+            tb_log_name: str = "OnPolicyAlgorithm",
+            reset_num_timesteps: bool = True,
+            progress_bar: bool = False,
+    ) -> SelfOnPolicyAlgorithm:
+        # call our new, or  the old original impl
+        return self._learn_new(total_timesteps,
+                               callback,
+                               log_interval,
+                               tb_log_name,
+                               reset_num_timesteps,
+                               progress_bar)
 
     def _get_torch_save_params(self) -> Tuple[List[str], List[str]]:
         state_dicts = ["policy", "policy.optimizer"]
