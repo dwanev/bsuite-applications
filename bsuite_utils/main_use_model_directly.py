@@ -30,7 +30,7 @@ def use_nace():
     bsuite_id = 'deep_sea/5'
     save_path = './tmp2/nace_default'
     overwrite = True
-    # nace_default = [ModelConfig(name="nace_default", cls=A2C)]
+    # nace_default = [ModelConfig(name="nace_default", cls=NaceAlgorithm)]
 
     base_env = bsuite.load_and_record(bsuite_id=bsuite_id, save_path=save_path, overwrite=overwrite)
     env = gym_wrapper.GymFromDMEnv(base_env)

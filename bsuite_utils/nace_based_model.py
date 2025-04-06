@@ -5,13 +5,19 @@ import random
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, ClassVar
 from abc import ABC, abstractmethod
 from collections import deque
+
+import numpy
 from torch.nn import functional as F
 
 import numpy as np
 import torch as th
 from gymnasium import spaces
 import gymnasium as gymnasium
+
 import nace
+from nace.actions_module import NaceGymActionMapper
+
+
 
 from stable_baselines3.common.utils import explained_variance
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
@@ -52,6 +58,7 @@ from stable_baselines3.common.utils import (
 from stable_baselines3.common.preprocessing import check_for_nested_spaces, is_image_space, \
     is_image_space_channels_first
 
+#TODO rename this variable
 SelfOnPolicyAlgorithm = TypeVar("SelfNaceAlgorithm", bound="NaceAlgorithm")
 
 
@@ -59,7 +66,7 @@ def maybe_make_env(env: Union[GymEnv, str], verbose: int) -> GymEnv:
     """If env is a string, make the environment; otherwise, return env.
 
     :param env: The environment to learn from.
-    :param verbose: Verbosity level: 0 for no output, 1 for indicating if envrironment is created
+    :param verbose: Verbosity level: 0 for no output, 1 for indicating if environment is created
     :return A Gym (vector) environment.
     """
     if isinstance(env, str):
@@ -183,6 +190,9 @@ class NaceAlgorithm(ABC):
                     np.isfinite(np.array([self.action_space.low, self.action_space.high]))
                 ), "Continuous action space must have a finite lower and upper bound"
 
+        #NACE attributes
+        self.agent_raw_value = numpy.array(1.0, dtype=numpy.float32).reshape((1, 1))
+        self.action_mapper = None # set properly later.
 
 
         if _init_setup_model:
@@ -418,58 +428,21 @@ class NaceAlgorithm(ABC):
     def _setup_model(self) -> None:
         self.set_random_seed(self.seed)
 
-        # if self.rollout_buffer_class is None:
-        #     if isinstance(self.observation_space, spaces.Dict):
-        #         self.rollout_buffer_class = DictRolloutBuffer
-        #     else:
-        #         self.rollout_buffer_class = RolloutBuffer
-        #
-        # self.rollout_buffer = self.rollout_buffer_class(
-        #     self.n_steps,
-        #     self.observation_space,  # type: ignore[arg-type]
-        #     self.action_space,
-        #     device=self.device,
-        #     gamma=self.gamma,
-        #     gae_lambda=self.gae_lambda,
-        #     n_envs=self.n_envs,
-        #     **self.rollout_buffer_kwargs,
-        # )
-        # self.policy = self.policy_class(  # type: ignore[assignment]
-        #     self.observation_space, self.action_space, self.lr_schedule, use_sde=self.use_sde, **self.policy_kwargs
-        # )
-        # self.policy = self.policy.to(self.device)
-
-        self.stepper = nace.stepper_v4.StepperV4(agent_indication_value=1)
-        self.full_view_npworld = None
-        self.time_counter = 0
-
-        nace.world_module.set_traversable_board_value(chr(0)) # set '0' to be traversable (should be learnt? or not needed)
-
-        if isinstance(self.action_space, spaces.Discrete):
-            numeric_action_list = [ i+self.action_space.start for i in range(self.action_space.n)]
-            fnc_action_list = [nace.world_module.left, nace.world_module.right]
-            nace.world_module.set_full_action_list(fnc_action_list)
-            self.action_lookup = {}
-            for (fnc, numeric) in zip( fnc_action_list, numeric_action_list):
-                self.action_lookup[fnc] = numeric
-        else:
-            # set the mapping of the movements, the rest are expected to be learnt. (these could be learnt from watching gym
-            # action and this and last worlds.)
-            print("ERROR: This line should not be logged or used, this path should never trigger. TODO delete") # TODO delete
-            nace.world_module.set_full_action_list(
-                [nace.world_module.up, nace.world_module.right, nace.world_module.down, nace.world_module.left])
-
-        print("TODO determine if the next line is needed, or needed to be refactored in some way") # TODO
-        nace.hypothesis.Hypothesis_UseMovementOpAssumptions(
-            nace.world_module.left,
-            nace.world_module.right,
-            nace.world_module.up,
-            nace.world_module.down,
-            nace.world_module.drop,
-            "DisableOpSymmetryAssumption" in sys.argv,
+        # need to map the NACE action space to the Gym action space
+        self.action_mapper = nace.actions_module.NaceGymActionMapper(
+            self.env.action_space,
+            extend_beyond_configured_actions=False,  # could be cleaned up and joined with above code better
+            # gym_to_nace_name_mapping={0: 'up', 1: 'right', 2: 'down', 3: 'left'}
+            gym_to_nace_name_mapping={0: 'left', 1: 'right'}
         )
 
-
+        self.stepper = nace.stepper_v4.StepperV4(
+            agent_indication_raw_value_list=[self.agent_raw_value],
+            available_actions_function=self.action_mapper.get_full_action_list,
+            seed=self.seed
+        )
+        self.full_view_npworld = None
+        self.time_counter = 0
 
 
     def collect_rollouts(
@@ -674,51 +647,6 @@ class NaceAlgorithm(ABC):
             self.logger.record("rollout/success_rate", safe_mean(self.ep_success_buffer))
         self.logger.dump(step=self.num_timesteps)
 
-    def _learn_original(
-            self: SelfOnPolicyAlgorithm,
-            total_timesteps: int,
-            callback: MaybeCallback = None,
-            log_interval: int = 1,
-            tb_log_name: str = "OnPolicyAlgorithm",
-            reset_num_timesteps: bool = True,
-            progress_bar: bool = False,
-    ) -> SelfOnPolicyAlgorithm:
-        # copied from on_policy_algorithm.py
-
-        iteration = 0
-
-        total_timesteps, callback = self._setup_learn(
-            total_timesteps,
-            callback,
-            reset_num_timesteps,
-            tb_log_name,
-            progress_bar,
-        )
-
-        callback.on_training_start(locals(), globals())
-
-        assert self.env is not None
-
-        while self.num_timesteps < total_timesteps:
-            continue_training = self.collect_rollouts(self.env, callback, self.rollout_buffer,
-                                                      n_rollout_steps=self.n_steps)
-
-            if not continue_training:
-                break
-
-            iteration += 1
-            self._update_current_progress_remaining(self.num_timesteps, total_timesteps)
-
-            # Display training infos
-            if log_interval is not None and iteration % log_interval == 0:
-                assert self.ep_info_buffer is not None
-                self._dump_logs(iteration)
-
-            self.train()  #
-
-        callback.on_training_end()
-
-        return self
 
     def _new_train_and_rollout(
             self,
@@ -772,22 +700,27 @@ class NaceAlgorithm(ABC):
                     view_dist_x=100,
                     view_dist_y=100)
 
-            # copy the env into a known foram world (this step could be optimised out)
-            agent_xy_loc_list, modified_count, pre_update_world = self.full_view_npworld.update_world_from_ground_truth_NPArray(
-                observed_word=self._last_obs[0]
+            # copy the env into a known form world (this step could be optimised out)
+            agent_previous_rc_locations_in_embedded_space, agent_current_rc_locations_in_embedded_space, modified_count, pre_update_world = self.full_view_npworld.update_world_from_ground_truth_NPArray(
+                observed_ndarray=self._last_obs[0],
+                update_mode="ALL",
+                cell_shape_rc=(1,1),
+                agent_indication_raw_value_list=[ self.agent_raw_value ]
             )
 
-            action, current_behavior = self.stepper.get_next_action(
+            nace_action, current_behavior = self.stepper.get_next_action(
                 ground_truth_external_world=self.full_view_npworld,
-                new_xy_loc=agent_xy_loc_list[-1],
+                new_rc_loc=agent_current_rc_locations_in_embedded_space[-1],
                 print_debug_info=True
             )
             # _x = env.render("human")
 
-            actions = np.zeros( (1,) )
-            actions[0] = self.action_lookup[action]
+            gym_action, nace_action_name = self.action_mapper.convertToGymAction(nace_action)
 
-                # Of course we need to add the observations times in.
+            actions = np.array( [gym_action,] )
+
+
+            # We need to add the observations times in to nace so that it can seek the 'oldest'.
 
             # Rescale and perform action
             clipped_actions = actions
@@ -810,18 +743,22 @@ class NaceAlgorithm(ABC):
                 accumulated_rewards += rewards
 
             # copy state from env format into NPformat
-            agent_xy_loc_list, modified_count, pre_update_world = self.full_view_npworld.update_world_from_ground_truth_NPArray(
-                observed_word=new_obs[0]
+            agent_previous_rc_locations_in_embedded_space, agent_current_rc_locations_in_embedded_space, modified_count, pre_update_world = self.full_view_npworld.update_world_from_ground_truth_NPArray(
+                observed_ndarray = new_obs[0],
+                update_mode = "ALL",
+                cell_shape_rc = (1, 1),
+                agent_indication_raw_value_list = [self.agent_raw_value]
             )
             # let stepper update it's internal world state
-            self.stepper.set_world_ground_truth_state(self.full_view_npworld, agent_xy_loc_list, self.time_counter)
+            self.stepper.set_world_ground_truth_state(self.full_view_npworld, agent_current_rc_locations_in_embedded_space, self.time_counter)
             self.time_counter += 1
 
             # let stepper get the latest agent state
             status = self.stepper.set_agent_ground_truth_state(
-                xy_loc=agent_xy_loc_list[-1],
+                rc_loc=agent_current_rc_locations_in_embedded_space[-1],
                 score=accumulated_rewards[0],
-                values_exc_score=[] # no state held by this agent (i.e. keys, money)
+                terminated= dones[0], # TODO get this from dones
+                values_exc_prefix=[] # no state held by this agent (i.e. keys, money)
             )
             # perform learning
             self.stepper.predict_and_observe(print_out_world_and_plan=True)
