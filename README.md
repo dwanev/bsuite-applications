@@ -27,22 +27,25 @@ You may need to install tensorflow separately as well.
 
 
 
-## Running experiments
+## Running experiments (train, gather data, write to disk)
 ```
 python run.py --help
 or  
-python run.py -e 1.1 -o ./tmp3 --overwrite T  
+python run.py -e 1.4 -o ./tmp5 --overwrite T  
 ```
 
 ## Generating plots
 ```
 python analyze.py --help
 or
-python analyze.py -e 1.1 -i ./tmp3  
+python analyze.py -e 1.4 -i ./tmp5  -o ./tmp5_reports
 
+# Experiment definitions
 
-# Experiment combinations are defined in experiment_definitions.py  i.e. for 1.1 and the code for them in model_configs.py  
-   
+bsuite-utils/experiment_definitions.py defines code components      
+bsuite-utils/experiment_definitions.py defines which models and config '1.4' relates to 
+bsuite/logging/csv_logging.py does the actual writing of the csv files that are used in result plots.
+
   
 ```
 
@@ -61,12 +64,13 @@ pip install -e /Users/dwane/projects/NACE_clean
  - bsuite environment descriptions https://github.com/google-deepmind/bsuite/blob/main/bsuite/analysis/results.ipynb
  - via farama: https://shimmy.farama.org/environments/bsuite/
  - list of 23 environments: https://github.com/google-deepmind/bsuite/blob/main/bsuite/bsuite.py which are variants of the 9 games: bandit, cartpole, catch, deep_sea, mnist, mountain_car, umbrella, memory and discounting.
- - environments
+ - games
    - bandit A simple independent-armed bandit problem. 
      - The agent is faced with 11 actions with deterministic rewards [0.0, 0.1, .., 1.0] randomly assigned. 
      - Run over 20 seeds for 10k episodes. 
      - Score is 1 - 2 * average_regret at 10k episodes. 
      - Must log episode, total_regret for standard analysis.
+     - NACE: an action that increases score, and does nothing else, is not learned by NACE. see nace_v3.py line 1921
    - catch DeepMind's internal "hello world" for RL agents. 
      - The environment is a 5x10 grid with a single falling block per episodes (similar to Tetris). 
      - The agent controls a single "paddle" pixel that it should use to "catch" the falling block. 
@@ -74,11 +78,13 @@ pip install -e /Users/dwane/projects/NACE_clean
      - Run the agent for 10k episodes and 20 seeds. 
      - Score is percentage of successful "catch" over first 10k episodes. 
      - Must log episode, total_regret for standard analysis.
+     - NACE: agent and block have the same representation, making it impossible to learn
    - deepsea - Scalable chain domains that test for deep exploration. 
      - The environment is an N x N grid with falling blocks similar to catch. However the block always starts in the top left. 
      - In each timestep, the agent can move the block "left" or "right". At each timestep, there is a small cost for moving "right" and no cost for moving "left". 
      - However, the agent can receive a large reward for choosing "right" N-times in a row and reaching the bottom right. 
      - This is the single rewarding policy, all other policies receive zero or negative return making this a very difficult exploration problem.
+     - NACE does not solve as there is no visible difference at target, to fix, nace needs to track last locations visited.
    - discounting_chain
    - memory_chain
    - mnist The "hello world" of deep learning, now as a contextual bandit. 
@@ -93,6 +99,7 @@ pip install -e /Users/dwane/projects/NACE_clean
      - It then has the chance to pick up an umbrella only in the first timestep. 
      - At the end of the episode the agent receives a reward of +1 if it made the correct choice of umbrella, but -1 if it made the incorrect choice. 
      - During chain_length intermediate steps rewards are random +1 or -1.
+     - NACE: needs change to representation to allow for the fact this is not grid based. Nace will also struggle when length > 0.
    - mountain_car A classic benchmark problem in RL. The agent controls an underpowered car and must drive it out of a valley. 
      - Reward of -1 each step until the car reaches the goal. 
      - Maximum episode length of 1000 steps. 
