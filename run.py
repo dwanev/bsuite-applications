@@ -7,6 +7,9 @@ from typing import List
 
 import bsuite
 from bsuite.utils import gym_wrapper
+
+import bsuite_utils.mini_sweep
+from bsuite_utils.mini_sweep import set_mini_suite_subset
 from termcolor import termcolor
 
 from bsuite_utils.experiment_definitions import EXPERIMENTS, ExperimentConfig
@@ -60,12 +63,20 @@ def run_parallel(experiment_ids: List[str], results_root: str, n_jobs: int, over
             encountered.add(model_conf.name)
 
     termcolor.cprint(f"Total: {len(tasks)} tasks", )
+    if len(tasks) < n_jobs:
+        termcolor.cprint(f"INFO Setting n_jobs and pool size to {len(tasks)}", )
+        n_jobs = len(tasks)
     with multiprocessing.Pool(n_jobs) as pool:
         pool.starmap(run_single, tasks)
 
 
 def main():
     args = parse_stdin()
+
+    t = args.keys
+
+    set_mini_suite_subset(args.keys)
+
     termcolor.cprint(f"Running the following experiments "
                      f"with n_proc={args.jobs}, overwrite={args.overwrite}, results_dir={args.results_dir}:",
                      _HEADER_COLOR, attrs=['bold'])
@@ -107,6 +118,19 @@ def parse_stdin():
 
     parser.add_argument("-o", "--results_dir", help="Root path into which results from experiment runs will be written",
                         default=DEFAULT_RESULTS_DIR)
+
+
+    parser.add_argument(
+        '-k',
+        "--keys",
+        type=str,
+        nargs="+",
+        choices= bsuite_utils.mini_sweep.sweep_config.keys(),
+        help="Which environment keys to test on (comma separated)",
+        required=True,
+    )
+
+
     args = parser.parse_args()
 
     if args.jobs == -1:

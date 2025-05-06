@@ -33,6 +33,8 @@ from termcolor import termcolor
 
 from bsuite_utils.experiment_definitions import ID_EXPERIMENT_MAP
 from bsuite_utils.model_configs import ModelConfig
+import bsuite_utils.mini_sweep
+
 
 ENV_ANALYSIS_MAP = {
     "bandit": bandit_analysis,
@@ -79,7 +81,7 @@ def prettify_agent_name(agent_name: str):
     return agent_name
 
 
-def single(experiment_id, output_dir):
+def single(experiment_id, output_dir, input_dir):
     # Union dfs from the different model directories
     experiment = ID_EXPERIMENT_MAP[experiment_id]
     save_path = os.path.join(output_dir, experiment_id)
@@ -87,10 +89,11 @@ def single(experiment_id, output_dir):
 
     dfs = []
     for model_config in experiment.model_configs:
-        model_path = get_results_path(model_config)
+        # model_path = get_results_path(model_config)
+        model_path = os.path.join(input_dir, model_config.name)
         print(model_path)
         if not os.path.exists(model_path):
-            termcolor.cprint(f"Missing results for {model_config.name}", "red")
+            termcolor.cprint(f"Missing results for {model_config.name}. {model_path} does not exists", "red")
             return
         df, _ = csv_load.load_bsuite(model_path)
         dfs.append(df)
@@ -137,10 +140,10 @@ def single(experiment_id, output_dir):
         # x.save(filename=os.path.join(env_img_dir, "scale.png"))
 
 
-def analyze_experiments(experiment_ids: List[str], reports_dir: str):
+def analyze_experiments(experiment_ids: List[str], reports_dir: str,  results_dir: str ):
     tasks = []
     for experiment_id in experiment_ids:
-        tasks.append((experiment_id, reports_dir))
+        tasks.append((experiment_id, reports_dir, results_dir))
     with multiprocessing.Pool(min(len(experiment_ids), multiprocessing.cpu_count())) as pool:
         pool.starmap(single, tasks)
 
@@ -152,7 +155,7 @@ def main():
     # run within the experiment will be stored in this folder as well and prefixed with the tag for that run, e.g.
     args = parse_stdin()
     termcolor.cprint(f"Generating report files for experiments={args.experiments}")
-    analyze_experiments(args.experiments, args.reports_dir)
+    analyze_experiments(args.experiments, args.reports_dir, args.results_dir)
 
 
 def parse_stdin():
@@ -174,6 +177,17 @@ def parse_stdin():
         "-o", "--reports_dir", help="Path to write experiment reports to", default=REPORTS_ROOT
     )
     parser.add_argument("-i", "--results_dir", help="Path to read experiment results from", default=RESULTS_ROOT)
+
+    parser.add_argument(
+        '-k',
+        "--keys",
+        type=str,
+        nargs="+",
+        choices= bsuite_utils.mini_sweep.sweep_config.keys(),
+        help="Which environment keys to test on (comma separated)",
+        required=True,
+    )
+
     return parser.parse_args()
 
 
