@@ -35,6 +35,8 @@ dqn_alternate_buffsizes = [
     ModelConfig(f"DQN_buf{x}", cls=DQN, kwargs={**_dqn_default_kwargs, "buffer_size": x}) for x in [100, 1_000, 100_000]
 ]
 
+
+
 # 2
 # dqn_life = [ModelConfig(name="DQN_life", cls=DQN, kwargs=_dqn_default_kwargs, env_wrapper=LifeWrapper)]
 dqn_frameskip_variants = [

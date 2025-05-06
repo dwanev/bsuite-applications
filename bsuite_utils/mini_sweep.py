@@ -9,7 +9,7 @@ from typing import List, Dict
 sweep_config = dict(
     bandit={
         'ids': range(20),
-        'time_steps': [10_000] * 20,
+        'time_steps': [1000] * 20,
         'fixed': False
     },
     bandit_noise={
@@ -64,21 +64,30 @@ sweep_config = dict(
     },
     umbrella_distract={
         'ids': [0, 5, 11, 16, 22],
-        'time_steps': [200_000] * 5,
+        'time_steps': [100] * 5, #[200_000] * 5,
         'fixed': False
     },
     umbrella_length={
         'ids': [0, 5, 11, 16, 22],
-        'time_steps': [10_000, 60_000, 140_000, 400_000, 1_000_000],
+        'time_steps': [100] * 5, #[10_000, 60_000, 140_000, 400_000, 1_000_000],
+        'fixed': False
+    },
+    catch={
+        'ids': [0],
+        'time_steps': [10_000],
         'fixed': False
     },
 )
 
-just_deepsea_config = dict(    deep_sea={
-        'ids': [0, 5, 10, 15, 20],
-        'time_steps': [100_000, 200_000, 300_000, 400_000, 500_000],
+just_deepsea_config = dict(    deep_sea=sweep_config['deep_sea'],
+)
+just_catch_config = dict(    catch={
+        'ids': [5],
+        'time_steps': [500] * 5, #[10_000],
         'fixed': False
     },
+)
+just_umbrella_length_config = dict(    umbrella_length=sweep_config['umbrella_length'],
 )
 
 
@@ -92,7 +101,7 @@ SWEEP_SETTINGS: Dict[str, ExperimentSettings] = dict()
 SWEEP: List[str] = []  # list of bsuite_ids
 
 
-for key in just_deepsea_config: # sweep_config
+for key in sweep_config:
     experiment = sweep_config[key]
     for idx, id_number in enumerate(experiment['ids']):
         SWEEP.append(f"{key}/{id_number}")
@@ -100,3 +109,27 @@ for key in just_deepsea_config: # sweep_config
             time_steps=experiment['time_steps'][idx],
             reset_timestep=experiment['fixed']
         )
+
+
+def set_mini_suite_subset(keys):
+    global SWEEP_SETTINGS
+    global SWEEP
+
+    SWEEP_SETTINGS = dict()
+    SWEEP = []  # list of bsuite_ids
+
+    for key in keys:
+        if key in sweep_config:
+            print("INFO  adding", key, "to suite of tests to run.")
+            experiment = sweep_config[key]
+            for idx, id_number in enumerate(experiment['ids']):
+                SWEEP.append(f"{key}/{id_number}")
+                SWEEP_SETTINGS[f"{key}/{id_number}"] = ExperimentSettings(
+                    time_steps=experiment['time_steps'][idx],
+                    reset_timestep=experiment['fixed']
+                )
+        else:
+            print("WARN  key",key,"not found")
+
+
+
